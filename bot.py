@@ -115,7 +115,7 @@ try:
     print("Configuring Google AI Client...")
     genai.configure(api_key=GOOGLE_API_KEY) # Uses key fetched from KV
 
-    generation_config = { "temperature": 0.6, "top_p": 1.0, "top_k": 1, "max_output_tokens": 5000, }
+    generation_config = { "temperature": 1, "top_p": 1.0, "top_k": 1, "max_output_tokens": 10000, }
     print(f"Generation Config: {generation_config}")
 
     safety_settings = [ {"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"] ]
