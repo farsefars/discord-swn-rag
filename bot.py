@@ -78,7 +78,7 @@ except Exception as e:
 INDEX_PATH = "pdf_rules_index.faiss"
 TEXT_CHUNKS_PATH = "pdf_text_chunks.txt"
 EMBEDDING_MODEL = 'models/embedding-001' # Or your chosen embedding model
-NUM_RESULTS_TO_RETRIEVE = 10
+NUM_RESULTS_TO_RETRIEVE = 20
 
 try:
     print(f"Loading FAISS index from: ./{INDEX_PATH}") # Use relative path notation
