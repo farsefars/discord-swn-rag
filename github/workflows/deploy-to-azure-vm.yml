@@ -1,0 +1,42 @@
+name: Deploy Bot to Azure VM
+
+on:
+  push:
+    branches:
+      - main
+
+# No longer defining AZURE_VM_NAME, AZURE_RESOURCE_GROUP, REPO_PATH_ON_VM here
+# env:
+#   AZURE_VM_NAME: 'aibots' # REMOVED
+#   AZURE_RESOURCE_GROUP: 'YOUR_VM_RESOURCE_GROUP_NAME' # REMOVED
+#   REPO_PATH_ON_VM: '/home/azureuser/discord-swn-rag' # REMOVED
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }} # Secrets are still used for credentials
+
+      - name: Pull Code and Restart Service on VM
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Use vars context to access the repository variables
+            echo "Executing commands on VM: ${{ vars.AZURE_VM_NAME }} in RG: ${{ vars.AZURE_RESOURCE_GROUP }}"
+            az vm run-command invoke \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "${{ vars.AZURE_VM_NAME }}" \
+              --command-id RunShellScript \
+              --scripts "cd ${{ vars.REPO_PATH_ON_VM }} && git checkout main && git fetch origin && git reset --hard origin/main && sudo systemctl restart discordbot.service"
+            echo "Commands sent to VM."
+
+      - name: Azure Logout
+        run: az logout
+        if: always()
