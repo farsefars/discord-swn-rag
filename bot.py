@@ -98,7 +98,7 @@ except Exception as e:
 # --- RAG Configuration (Global Settings) ---
 # Settings that apply across rulebooks (can be overridden if needed)
 EMBEDDING_MODEL = 'models/embedding-001' # Or your chosen embedding model compatible with indices
-NUM_RESULTS_TO_RETRIEVE = 5 # Changed based on previous conversation (k=5)
+NUM_RESULTS_TO_RETRIEVE = 10
 TARGET_CHAR_LIMIT = 1900 # Target length for AI response
 print(f"Global RAG Config: Embedding Model={EMBEDDING_MODEL}, k={NUM_RESULTS_TO_RETRIEVE}, Target Chars={TARGET_CHAR_LIMIT}")
 
