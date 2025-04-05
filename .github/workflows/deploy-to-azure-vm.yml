@@ -11,49 +11,64 @@ jobs:
 
     steps:
       - name: Checkout code (Action Environment)
-        # Checks out your code into the Action runner environment (not the VM yet)
-        # Needed if your workflow needed to access repo files directly, but not strictly necessary for just run-command. Keeping it is fine.
         uses: actions/checkout@v4
 
       - name: Azure Login
-        # Logs the GitHub Action runner into Azure using your service principal secret
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }} # Uses the secret configured in GitHub repo settings
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Pull Code and Restart Service on VM
-        # Uses the Azure CLI installed in the Action runner to send commands to your VM
+      - name: Pull Code and Restart Service on VM (Enhanced Logging)
         uses: azure/CLI@v1
         with:
           inlineScript: |
             echo "Preparing to execute commands on VM: ${{ vars.AZURE_VM_NAME }} in RG: ${{ vars.AZURE_RESOURCE_GROUP }}"
 
-            # Define variables for use within the script executed ON THE VM
-            # Using the GitHub variables defined in repo settings (vars context)
-            VM_REPO_PATH="${{ vars.REPO_PATH_ON_VM }}" # Example: /home/azureuser/discord-swn-rag or /home/aibots/discord_bot
+            # Define VM repository path variable from GitHub vars
+            VM_REPO_PATH="${{ vars.REPO_PATH_ON_VM }}" # Ensure this is EXACTLY /home/aibots/discord_bot in your GitHub Variables
+            SERVICE_NAME="discordbot.service" # Define service name clearly
 
-            # Construct the multi-line script to be executed on the VM
-            # Use '&& \' for line continuation within the script string
-            # Added 'set -e' to exit immediately if any command fails
-            VM_COMMANDS="set -e && \
-                         echo --- Changing to repository directory: ${VM_REPO_PATH} && \
-                         cd ${VM_REPO_PATH} && \
+            # Construct the multi-line script with enhanced logging and error checks
+            # Use 'set -e' to exit on first error, 'set -x' to trace commands executed
+            VM_COMMANDS="set -ex && \
+                         echo '--- STEP 1: Setup and Directory Navigation ---' && \
+                         echo \"Target Repository Path: ${VM_REPO_PATH}\" && \
+                         echo \"Target Service Name: ${SERVICE_NAME}\" && \
+                         cd \"${VM_REPO_PATH}\" || { echo 'ERROR: Failed to cd into repo path'; exit 1; } && \
+                         echo \"Current Directory:\" && \
+                         pwd && \
                          \
-                         echo --- Marking directory as safe for git operations by root user --- && \
-                         git config --global --add safe.directory ${VM_REPO_PATH} && \
+                         echo '--- STEP 2: Configure Git Safe Directory ---' && \
+                         git config --global --add safe.directory \"${VM_REPO_PATH}\" 2>&1 && \
+                         echo 'Git safe.directory configured.' && \
                          \
-                         echo --- Pulling latest code from main branch --- && \
-                         git checkout main && \
-                         git fetch origin && \
-                         git reset --hard origin/main && \
+                         echo '--- STEP 3: Update Code from Git Repository ---' && \
+                         git status 2>&1 && \
+                         echo 'Fetching from origin...' && \
+                         git fetch origin 2>&1 && \
+                         echo 'Checking out main branch...' && \
+                         git checkout main 2>&1 && \
+                         echo 'Resetting to origin/main...' && \
+                         git reset --hard origin/main 2>&1 || { echo 'ERROR: git reset failed'; exit 1; } && \
+                         echo 'Git repository updated.' && \
+                         git status 2>&1 && \
                          \
-                         echo --- Restarting discordbot service --- && \
-                         sudo systemctl restart discordbot.service && \
+                         echo '--- STEP 4: Restart Systemd Service ---' && \
+                         echo \"Attempting to restart ${SERVICE_NAME}...\" && \
+                         sudo systemctl restart \"${SERVICE_NAME}\" || { echo \"ERROR: Failed to restart ${SERVICE_NAME}\"; exit 1; } && \
+                         echo \"Waiting briefly after restart command...\" && \
+                         sleep 5 && \
+                         echo \"Checking status of ${SERVICE_NAME}...\" && \
+                         sudo systemctl status \"${SERVICE_NAME}\" --no-pager 2>&1 || echo \"WARN: systemctl status command failed, but restart might have worked.\" && \
                          \
-                         echo --- Deployment commands completed successfully ---"
+                         echo '--- DEPLOYMENT SCRIPT COMPLETED ON VM ---'"
 
-            echo "Sending the following commands to the VM:"
-            echo "${VM_COMMANDS}" # Log the commands being sent for easier debugging
+
+            echo "Sending the following enhanced script to the VM:"
+            # Log the commands being sent for debugging purposes
+            echo "--------------------------------------------------"
+            echo "${VM_COMMANDS}"
+            echo "--------------------------------------------------"
 
             # Execute the commands on the target Azure VM
             az vm run-command invoke \
@@ -62,9 +77,8 @@ jobs:
               --command-id RunShellScript \
               --scripts "${VM_COMMANDS}" # Pass the constructed command string
 
-            echo "Command invocation sent to VM."
+            echo "Command invocation sent to VM. Check detailed output below for execution logs from the VM."
 
       - name: Azure Logout
-        # Logs out of Azure CLI in the Action runner environment
         run: az logout
-        if: always() # Ensures logout happens even if previous steps fail
+        if: always()
