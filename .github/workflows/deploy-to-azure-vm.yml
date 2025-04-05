@@ -3,40 +3,68 @@ name: Deploy Bot to Azure VM
 on:
   push:
     branches:
-      - main
-
-# No longer defining AZURE_VM_NAME, AZURE_RESOURCE_GROUP, REPO_PATH_ON_VM here
-# env:
-#   AZURE_VM_NAME: 'aibots' # REMOVED
-#   AZURE_RESOURCE_GROUP: 'YOUR_VM_RESOURCE_GROUP_NAME' # REMOVED
-#   REPO_PATH_ON_VM: '/home/azureuser/discord-swn-rag' # REMOVED
+      - main # Triggers on pushes to the main branch
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # The environment the GitHub Action itself runs in
 
     steps:
-      - name: Checkout code
+      - name: Checkout code (Action Environment)
+        # Checks out your code into the Action runner environment (not the VM yet)
+        # Needed if your workflow needed to access repo files directly, but not strictly necessary for just run-command. Keeping it is fine.
         uses: actions/checkout@v4
 
       - name: Azure Login
+        # Logs the GitHub Action runner into Azure using your service principal secret
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }} # Secrets are still used for credentials
+          creds: ${{ secrets.AZURE_CREDENTIALS }} # Uses the secret configured in GitHub repo settings
 
       - name: Pull Code and Restart Service on VM
+        # Uses the Azure CLI installed in the Action runner to send commands to your VM
         uses: azure/CLI@v1
         with:
           inlineScript: |
-            # Use vars context to access the repository variables
-            echo "Executing commands on VM: ${{ vars.AZURE_VM_NAME }} in RG: ${{ vars.AZURE_RESOURCE_GROUP }}"
+            echo "Preparing to execute commands on VM: ${{ vars.AZURE_VM_NAME }} in RG: ${{ vars.AZURE_RESOURCE_GROUP }}"
+
+            # Define variables for use within the script executed ON THE VM
+            # Using the GitHub variables defined in repo settings (vars context)
+            VM_REPO_PATH="${{ vars.REPO_PATH_ON_VM }}" # Example: /home/azureuser/discord-swn-rag or /home/aibots/discord_bot
+
+            # Construct the multi-line script to be executed on the VM
+            # Use '&& \' for line continuation within the script string
+            # Added 'set -e' to exit immediately if any command fails
+            VM_COMMANDS="set -e && \
+                         echo --- Changing to repository directory: ${VM_REPO_PATH} && \
+                         cd ${VM_REPO_PATH} && \
+                         \
+                         echo --- Marking directory as safe for git operations by root user --- && \
+                         git config --global --add safe.directory ${VM_REPO_PATH} && \
+                         \
+                         echo --- Pulling latest code from main branch --- && \
+                         git checkout main && \
+                         git fetch origin && \
+                         git reset --hard origin/main && \
+                         \
+                         echo --- Restarting discordbot service --- && \
+                         sudo systemctl restart discordbot.service && \
+                         \
+                         echo --- Deployment commands completed successfully ---"
+
+            echo "Sending the following commands to the VM:"
+            echo "${VM_COMMANDS}" # Log the commands being sent for easier debugging
+
+            # Execute the commands on the target Azure VM
             az vm run-command invoke \
               --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
               --name "${{ vars.AZURE_VM_NAME }}" \
               --command-id RunShellScript \
-              --scripts "cd ${{ vars.REPO_PATH_ON_VM }} && git checkout main && git fetch origin && git reset --hard origin/main && sudo systemctl restart discordbot.service"
-            echo "Commands sent to VM."
+              --scripts "${VM_COMMANDS}" # Pass the constructed command string
+
+            echo "Command invocation sent to VM."
 
       - name: Azure Logout
+        # Logs out of Azure CLI in the Action runner environment
         run: az logout
-        if: always()
+        if: always() # Ensures logout happens even if previous steps fail
